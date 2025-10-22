@@ -1,0 +1,211 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const path = require('path');
+
+// Importar rotas
+const pdfRoutes = require('./src/routes/pdfRoutes');
+const fornecedorRoutes = require('./src/routes/fornecedorRoutes');
+const tipoDespesaRoutes = require('./src/routes/tipoDespesaRoutes');
+const classificacaoRoutes = require('./src/routes/classificacaoRoutes');
+const analiseRoutes = require('./src/routes/analiseRoutes');
+const clienteRoutes = require('./src/routes/clienteRoutes');
+const tipoReceitaRoutes = require('./src/routes/tipoReceitaRoutes');
+const contaReceberRoutes = require('./src/routes/contaReceberRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middlewares de segurança
+app.use(helmet());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // máximo 100 requests por IP por janela de tempo
+  message: {
+    success: false,
+    message: 'Muitas requisições. Tente novamente em 15 minutos.'
+  }
+});
+app.use(limiter);
+
+// Rate limiting específico para upload de PDF
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 5, // máximo 5 uploads por minuto
+  message: {
+    success: false,
+    message: 'Muitos uploads. Tente novamente em 1 minuto.'
+  }
+});
+
+// CORS
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'http://localhost:5174'
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permitir chamadas de ferramentas e servidores internos (sem origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Em desenvolvimento, liberar outras origens locais
+    if (origin.startsWith('http://localhost')) return callback(null, true);
+    return callback(new Error('CORS: Origem não permitida'));
+  },
+  credentials: true
+}));
+
+// Body parser
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Servir arquivos estáticos (uploads)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Middleware de log
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
+// Rotas
+app.use('/api/pdf', pdfRoutes);
+app.use('/api/fornecedores', fornecedorRoutes);
+app.use('/api/clientes', clienteRoutes);
+app.use('/api/tipos-despesa', tipoDespesaRoutes);
+app.use('/api/tipos-receita', tipoReceitaRoutes);
+app.use('/api/classificacao', classificacaoRoutes);
+app.use('/api/analise', analiseRoutes);
+app.use('/api/contas-receber', contaReceberRoutes);
+
+// Rota de health check
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Servidor funcionando',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Rota raiz
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'API NotaFiscal - Sistema de Extração de Dados',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      pdf: {
+        upload: 'POST /api/pdf/upload',
+        processAndSave: 'POST /api/pdf/process-and-save',
+        reprocess: 'POST /api/pdf/reprocess/:filename',
+        history: 'GET /api/pdf/history'
+      },
+      fornecedores: {
+        listar: 'GET /api/fornecedores',
+        buscar: 'GET /api/fornecedores/buscar',
+        buscarPorId: 'GET /api/fornecedores/:id',
+        criar: 'POST /api/fornecedores',
+        atualizar: 'PUT /api/fornecedores/:id',
+        inativar: 'PATCH /api/fornecedores/:id/inativar',
+        reativar: 'PATCH /api/fornecedores/:id/reativar'
+      },
+      tiposDespesa: {
+        listar: 'GET /api/tipos-despesa',
+        categorias: 'GET /api/tipos-despesa/categorias',
+        buscar: 'GET /api/tipos-despesa/buscar',
+        classificar: 'POST /api/tipos-despesa/classificar',
+        buscarPorId: 'GET /api/tipos-despesa/:id',
+        criar: 'POST /api/tipos-despesa',
+        atualizar: 'PUT /api/tipos-despesa/:id',
+        inativar: 'PATCH /api/tipos-despesa/:id/inativar',
+        reativar: 'PATCH /api/tipos-despesa/:id/reativar'
+      },
+      clientes: {
+        listar: 'GET /api/clientes',
+        buscar: 'GET /api/clientes/buscar',
+        buscarPorId: 'GET /api/clientes/:id',
+        criar: 'POST /api/clientes',
+        atualizar: 'PUT /api/clientes/:id',
+        inativar: 'PATCH /api/clientes/:id/inativar',
+        reativar: 'PATCH /api/clientes/:id/reativar'
+      },
+      tiposReceita: {
+        listar: 'GET /api/tipos-receita',
+        porCategoria: 'GET /api/tipos-receita/categoria/:categoria',
+        buscarPorId: 'GET /api/tipos-receita/:id',
+        criar: 'POST /api/tipos-receita',
+        atualizar: 'PUT /api/tipos-receita/:id',
+        inativar: 'PATCH /api/tipos-receita/:id/inativar',
+        reativar: 'PATCH /api/tipos-receita/:id/reativar'
+      },
+      contasReceber: {
+        listar: 'GET /api/contas-receber',
+        buscarPorId: 'GET /api/contas-receber/:id',
+        criar: 'POST /api/contas-receber',
+        atualizar: 'PUT /api/contas-receber/:id',
+        inativar: 'PATCH /api/contas-receber/:id/inativar',
+        reativar: 'PATCH /api/contas-receber/:id/reativar'
+      },
+      classificacao: {
+        classificar: 'POST /api/classificacao/classificar',
+        lote: 'POST /api/classificacao/lote',
+        sugestoes: 'POST /api/classificacao/sugestoes',
+        categorias: 'GET /api/classificacao/categorias',
+        categoria: 'GET /api/classificacao/categorias/:categoria',
+        feedback: 'POST /api/classificacao/feedback',
+        teste: 'GET /api/classificacao/teste'
+      },
+      analise: {
+        verificar: 'POST /api/analise/verificar',
+        registrar: 'POST /api/analise/registrar'
+      }
+    }
+  });
+});
+
+// Middleware de tratamento de erros 404
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Rota não encontrada',
+    path: req.originalUrl
+  });
+});
+
+// Middleware de tratamento de erros globais
+app.use((err, req, res, next) => {
+  console.error('Erro não tratado:', err);
+  
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Erro interno do servidor',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`📄 API docs: http://localhost:${PORT}/`);
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Tratamento de erros não capturados
+process.on('uncaughtException', (err) => {
+  console.error('Erro não capturado:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Promise rejeitada não tratada:', reason);
+  process.exit(1);
+});
+
+module.exports = app;

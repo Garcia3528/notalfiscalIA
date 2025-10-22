@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: notafiscal-backend
+    environment:
+      - NODE_ENV=production
+      - PORT=${PORT:-3001}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10485760}
+      - UPLOAD_PATH=/app/uploads
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - notafiscal-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3001}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: notafiscal-frontend
+    environment:
+      - VITE_API_URL=http://localhost:${PORT:-3001}
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - notafiscal-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  uploads_data:
+    driver: local
+
+networks:
+  notafiscal-network:
+    driver: bridge
