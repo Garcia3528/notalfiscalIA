@@ -11,7 +11,11 @@ echo Verificando os containers em execucao...
 docker-compose ps
 
 echo Ambiente Docker iniciado com sucesso!
-echo Frontend: http://localhost:3000
-echo Backend: http://localhost:3001
+set FRONTEND_PORT=%FRONTEND_PORT%
+if "%FRONTEND_PORT%"=="" set FRONTEND_PORT=80
+echo Frontend: http://localhost:%FRONTEND_PORT%
+set PORT=%PORT%
+if "%PORT%"=="" set PORT=3001
+echo Backend: http://localhost:%PORT%
 
 pause

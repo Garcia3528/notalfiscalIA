@@ -62,7 +62,6 @@ Thumbs.db
 Dockerfile*
 docker-compose*
 .dockerignore
-nginx.conf
 
 # Documentação
 README.md

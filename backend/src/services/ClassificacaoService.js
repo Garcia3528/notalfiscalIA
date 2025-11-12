@@ -60,11 +60,37 @@ class ClassificacaoService {
    */
   async classificarDespesa(dados) {
     console.log('🔍 Classificando despesa...');
+    const preferirIA = process.env.PREFER_AI === 'true';
+
+    // Quando preferir IA, tenta primeiro com IA e retorna se for suficientemente confiável
+    if (preferirIA) {
+      try {
+        console.log('🤖 Preferência configurada para IA (PREFER_AI=true). Tentando IA primeiro...');
+        const tentativaIAInicial = await this.classificarComIA(dados);
+        if (tentativaIAInicial && tentativaIAInicial.categoria && tentativaIAInicial.confianca >= 0.6) {
+          console.log('✅ IA retornou classificação com boa confiança. Usando resultado da IA.');
+          return tentativaIAInicial;
+        }
+        console.log('ℹ️ IA inicial não atingiu confiança mínima. Continuando com fluxo híbrido.');
+      } catch (e) {
+        console.warn('⚠️ Falha ao tentar IA inicialmente:', e.message);
+      }
+    }
     
     // Primeiro tenta classificar por keywords com a lógica melhorada
     const classificacaoPorKeywords = this.classificarPorKeywords(dados);
     console.log('✅ Classificação por keywords:', classificacaoPorKeywords);
-    
+
+    // Nova etapa: tentar classificação baseada no fornecedor
+    const classificacaoPorFornecedor = this.classificarPorFornecedor(dados);
+    console.log('✅ Classificação por fornecedor:', classificacaoPorFornecedor);
+
+    // Se o fornecedor indicar uma categoria forte (não OUTROS) com boa confiança, prioriza
+    if (classificacaoPorFornecedor.categoria !== 'OUTROS' && classificacaoPorFornecedor.confianca >= 0.7) {
+      console.log('✅ Prioridade ao fornecedor: categoria identificada pelo fornecedor');
+      return classificacaoPorFornecedor;
+    }
+
     // Se a confiança for alta e não for OUTROS, retorna imediatamente
     if (classificacaoPorKeywords.confianca > 0.7 && classificacaoPorKeywords.categoria !== 'OUTROS') {
       console.log('✅ Confiança alta na classificação por keywords, retornando');
@@ -518,16 +544,22 @@ RESPOSTA (JSON):
                   }
                 }
                 
-                if (categoriaEncontrada) {
-                  console.log('🔄 Mapeando categoria para:', categoriaEncontrada);
-                  classificacao.categoria = categoriaEncontrada;
-                  classificacao.confianca = Math.max(classificacao.confianca - 0.1, 0.3);
-                  classificacao.motivo += ' (categoria mapeada automaticamente)';
-                } else {
-                  classificacao.categoria = 'OUTRAS';
-                  classificacao.confianca = 0.3;
-                  classificacao.motivo = 'Categoria não reconhecida, classificado como OUTRAS';
-                }
+              if (categoriaEncontrada) {
+                console.log('🔄 Mapeando categoria para:', categoriaEncontrada);
+                classificacao.categoria = categoriaEncontrada;
+                classificacao.confianca = Math.max(classificacao.confianca - 0.1, 0.3);
+                classificacao.motivo += ' (categoria mapeada automaticamente)';
+              } else {
+                classificacao.categoria = 'OUTRAS';
+                classificacao.confianca = 0.3;
+                classificacao.motivo = 'Categoria não reconhecida, classificado como OUTRAS';
+              }
+              }
+              // Se a categoria final for OUTROS/OUTRAS, reduzir confiança para evitar falsas certezas
+              if (['OUTROS', 'OUTRAS'].includes(classificacao.categoria)) {
+                const conf = typeof classificacao.confianca === 'number' ? classificacao.confianca : 0.3;
+                classificacao.confianca = Math.min(conf, 0.4);
+                classificacao.motivo = (classificacao.motivo || 'Classificado como OUTRAS') + ' (confiança reduzida)';
               }
               
               // Adiciona informações extras para debug
@@ -747,9 +779,159 @@ RESPOSTA (JSON):
   }
 
   /**
+   * Classificação baseada no fornecedor (nome/marca indicam o tipo de despesa)
+   * Dá prioridade alta quando há correspondência forte com ramos conhecidos.
+   */
+  classificarPorFornecedor(dados) {
+    const textoFornecedor = (dados.fornecedor?.nome || '').toLowerCase();
+    const textoCompleto = this.extrairTextoParaAnalise(dados).toLowerCase();
+
+    // Lista de padrões por fornecedor comum -> categoria/subcategoria
+    const regras = [
+      // Combustíveis / postos
+      {
+        padroes: ['posto', 'ipiranga', 'shell', 'petrobras', 'ale', 'raizen', 'br distribuidora', 'grid'],
+        categoria: 'MANUTENÇÃO E OPERAÇÃO',
+        subcategoria: 'Combustíveis',
+        confianca: 0.85
+      },
+      // Peças / oficinas
+      {
+        padroes: ['auto peças', 'autopecas', 'auto-peças', 'mecânica', 'mecanica', 'oficina', 'borracharia', 'truck center', 'peças'],
+        categoria: 'MANUTENÇÃO E OPERAÇÃO',
+        subcategoria: 'Peças e Reparos',
+        confianca: 0.8
+      },
+      // Insumos agrícolas - cooperativas e fornecedores conhecidos
+      {
+        padroes: ['cooperativa', 'coamo', 'cvale', 'syngenta', 'bayer', 'yara', 'adubos', 'fertilizantes'],
+        categoria: 'INSUMOS AGRÍCOLAS',
+        subcategoria: 'Fertilizantes',
+        confianca: 0.85
+      },
+      {
+        padroes: ['sementes', 'soja semente', 'milho semente', 'agros'],
+        categoria: 'INSUMOS AGRÍCOLAS',
+        subcategoria: 'Sementes',
+        confianca: 0.85
+      },
+      {
+        padroes: ['defensivos', 'herbicida', 'fungicida', 'inseticida', 'agrotóxico', 'agrotoxico'],
+        categoria: 'INSUMOS AGRÍCOLAS',
+        subcategoria: 'Defensivos',
+        confianca: 0.85
+      },
+      // Telecom
+      {
+        padroes: ['claro', 'vivo', 'tim', 'oi', 'telecom'],
+        categoria: 'INFRAESTRUTURA E UTILIDADES',
+        subcategoria: 'Telefone e Internet',
+        confianca: 0.8
+      },
+      // Energia elétrica
+      {
+        padroes: ['copel', 'energisa', 'cemig', 'neoenergia', 'enel'],
+        categoria: 'INFRAESTRUTURA E UTILIDADES',
+        subcategoria: 'Energia Elétrica',
+        confianca: 0.8
+      },
+      // Supermercados / alimentação
+      {
+        padroes: ['supermercado', 'mercado', 'carrefour', 'assai', 'atacadão', 'atacadao', 'angeloni'],
+        categoria: 'ADMINISTRATIVAS',
+        subcategoria: 'Alimentação',
+        confianca: 0.75
+      },
+      // Hospedagem
+      {
+        padroes: ['hotel', 'pousada', 'ibis', 'motel'],
+        categoria: 'ADMINISTRATIVAS',
+        subcategoria: 'Hospedagem',
+        confianca: 0.8
+      },
+      // Jurídico / Contábil
+      {
+        padroes: ['advocacia', 'advogados', 'escritorio jurídico', 'juridico'],
+        categoria: 'ADMINISTRATIVAS',
+        subcategoria: 'Honorários Advocatícios',
+        confianca: 0.8
+      },
+      {
+        padroes: ['contabilidade', 'contador', 'escritorio contábil', 'contábil'],
+        categoria: 'ADMINISTRATIVAS',
+        subcategoria: 'Contabilidade',
+        confianca: 0.8
+      },
+      // Seguros
+      {
+        padroes: ['porto seguro', 'bradesco seguros', 'mapfre', 'allianz'],
+        categoria: 'SEGUROS E PROTEÇÃO',
+        subcategoria: 'Seguros',
+        confianca: 0.85
+      },
+      // Transportes / Logística
+      {
+        padroes: ['transportes', 'logística', 'logistica', 'jsl', 'randon'],
+        categoria: 'SERVIÇOS OPERACIONAIS',
+        subcategoria: 'Fretes e Transportes',
+        confianca: 0.8
+      },
+      // Construção / materiais
+      {
+        padroes: ['construtora', 'madeireira', 'material de construção', 'ferragens', 'depósito', 'deposito'],
+        categoria: 'INFRAESTRUTURA E UTILIDADES',
+        subcategoria: 'Construção e Reformas',
+        confianca: 0.8
+      },
+      // Bancos / serviços bancários
+      {
+        padroes: ['bradesco', 'itau', 'santander', 'banco do brasil', 'sicredi', 'sicoob'],
+        categoria: 'ADMINISTRATIVAS',
+        subcategoria: 'Serviços Bancários',
+        confianca: 0.75
+      }
+    ];
+
+    // Tenta casar primeiro pelo nome do fornecedor, depois pelo texto completo
+    for (const regra of regras) {
+      for (const termo of regra.padroes) {
+        if (textoFornecedor.includes(termo) || textoCompleto.includes(termo)) {
+          return {
+            categoria: regra.categoria,
+            subcategoria: regra.subcategoria,
+            confianca: regra.confianca,
+            motivo: `Fornecedor indica ramo: "${termo}" → ${regra.categoria}`,
+            fonte: 'fornecedor'
+          };
+        }
+      }
+    }
+
+    // Fallback
+    return {
+      categoria: 'OUTRAS',
+      subcategoria: 'Despesas Diversas',
+      confianca: 0.3,
+      motivo: 'Fornecedor não indicou categoria específica',
+      fonte: 'fornecedor_fallback'
+    };
+  }
+
+  /**
    * Combina resultados de diferentes métodos de classificação
    */
   combinarResultados(resultadoKeywords, resultadoIA) {
+    // Se qualquer resultado for OUTROS/OUTRAS, garantir confiança baixa
+    const clampOutros = (res) => {
+      if (['OUTROS', 'OUTRAS'].includes(res.categoria)) {
+        res.confianca = Math.min(res.confianca || 0.3, 0.4);
+        res.motivo = (res.motivo || '') + ' (confiança ajustada para categoria genérica)';
+      }
+      return res;
+    };
+
+    resultadoKeywords = clampOutros({ ...resultadoKeywords });
+    resultadoIA = clampOutros({ ...resultadoIA });
     // Se as categorias são iguais, aumenta a confiança
     if (resultadoKeywords.categoria === resultadoIA.categoria) {
       return {
@@ -801,9 +983,34 @@ RESPOSTA (JSON):
    * Sugere categorias alternativas
    */
   async sugerirCategorias(dados, limite = 3) {
+    // 1) Tenta obter alternativas direto da IA Gemini
+    try {
+      const ia = await this.classificarComIA(dados);
+      if (ia && Array.isArray(ia.alternativas) && ia.alternativas.length > 0) {
+        const mapeadas = ia.alternativas
+          .map((alt) => {
+            const cat = (alt.categoria || '').toUpperCase();
+            const nome = this.categorias[cat]?.nome || cat || 'Categoria';
+            return {
+              categoria: cat,
+              nome,
+              probabilidade: typeof alt.confianca === 'number' ? alt.confianca : 0.5,
+              motivo: 'Sugerida pela IA como alternativa'
+            };
+          })
+          .filter(s => s.categoria);
+        if (mapeadas.length > 0) {
+          return mapeadas
+            .sort((a, b) => b.probabilidade - a.probabilidade)
+            .slice(0, limite);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Falha ao obter sugestões pela IA, usando heurísticas locais:', e.message);
+    }
+
+    // 2) Fallback: calcular probabilidades locais por categoria
     const resultados = [];
-    
-    // Testa todas as categorias
     for (const categoria of Object.keys(this.categorias)) {
       const resultado = await this.calcularProbabilidadeCategoria(dados, categoria);
       resultados.push({
@@ -813,8 +1020,6 @@ RESPOSTA (JSON):
         motivo: resultado.motivo
       });
     }
-    
-    // Ordena por probabilidade e retorna as top N
     return resultados
       .sort((a, b) => b.probabilidade - a.probabilidade)
       .slice(0, limite);
@@ -849,7 +1054,24 @@ RESPOSTA (JSON):
    * Obtém informações sobre uma categoria
    */
   obterInfoCategoria(categoria) {
-    return this.categorias[categoria] || this.categorias['OUTROS'];
+    // Primeiro tenta nas categorias básicas
+    if (this.categorias[categoria]) return this.categorias[categoria];
+
+    // Mapear categorias avançadas para nomes amigáveis
+    const avancadas = {
+      'ADMINISTRATIVAS': { nome: 'Administrativas', descricao: 'Honorários, serviços bancários, gestão e despesas administrativas', keywords: [] },
+      'IMPOSTOS E TAXAS': { nome: 'Impostos e Taxas', descricao: 'Tributos fiscais, guias e contribuições', keywords: [] },
+      'INFRAESTRUTURA E UTILIDADES': { nome: 'Infraestrutura e Utilidades', descricao: 'Energia, água, internet, telefonia e obras', keywords: [] },
+      'INSUMOS AGRÍCOLAS': { nome: 'Insumos Agrícolas', descricao: 'Fertilizantes, sementes e defensivos', keywords: [] },
+      'INVESTIMENTOS': { nome: 'Investimentos', descricao: 'Aquisição de máquinas, veículos e melhorias', keywords: [] },
+      'MANUTENÇÃO E OPERAÇÃO': { nome: 'Manutenção e Operação', descricao: 'Combustíveis, peças e reparos de equipamentos', keywords: [] },
+      'RECURSOS HUMANOS': { nome: 'Recursos Humanos', descricao: 'Salários, encargos e mão de obra', keywords: [] },
+      'SEGUROS E PROTEÇÃO': { nome: 'Seguros e Proteção', descricao: 'Seguros patrimoniais e pessoais', keywords: [] },
+      'SERVIÇOS OPERACIONAIS': { nome: 'Serviços Operacionais', descricao: 'Fretes, transportes e serviços terceirizados', keywords: [] },
+      'OUTRAS': { nome: 'Outras', descricao: 'Despesas diversas não categorizadas', keywords: [] }
+    };
+
+    return avancadas[categoria] || this.categorias['OUTROS'];
   }
 
   /**

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 const StatusBadge = ({ exists }) => (
   <span className={`px-2 py-1 rounded text-xs font-medium ${exists ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -23,7 +23,7 @@ const AnaliseLancamento = ({ dadosExtraidos }) => {
     setError(null);
     setVerificacao(null);
     try {
-      const { data } = await axios.post(`${API_BASE}/api/analise/verificar`, {
+      const { data } = await axios.post(`${API_BASE}/analise/verificar`, {
         dados: dadosExtraidos,
       });
       if (data?.success) {
@@ -43,7 +43,7 @@ const AnaliseLancamento = ({ dadosExtraidos }) => {
     setError(null);
     setRegisterResult(null);
     try {
-      const { data } = await axios.post(`${API_BASE}/api/analise/registrar`, {
+      const { data } = await axios.post(`${API_BASE}/analise/registrar`, {
         dados: dadosExtraidos,
         criarSeNaoExistir: true,
       });

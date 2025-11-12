@@ -94,11 +94,19 @@ if (!supabaseUrl || !supabaseKey || !isValidUrl(supabaseUrl) || supabaseUrl.incl
         }
         
         // Tentar fazer uma requisição simples
-        const { data, error } = await supabaseClient
+        // Executa consulta simples com timeout manual (Promise.race)
+        const queryPromise = supabaseClient
           .from('fornecedores')
           .select('count')
-          .limit(1)
-          .timeout(5000); // Timeout de 5 segundos para a requisição
+          .limit(1);
+
+        const timeoutMs = 5000;
+        const result = await Promise.race([
+          queryPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+        ]);
+
+        const { data, error } = result || {};
         
         if (error) {
           // Se for erro de conectividade e ainda temos tentativas, tentar novamente

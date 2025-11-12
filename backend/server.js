@@ -14,6 +14,7 @@ const analiseRoutes = require('./src/routes/analiseRoutes');
 const clienteRoutes = require('./src/routes/clienteRoutes');
 const tipoReceitaRoutes = require('./src/routes/tipoReceitaRoutes');
 const contaReceberRoutes = require('./src/routes/contaReceberRoutes');
+const ragRoutes = require('./src/routes/ragRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -81,6 +82,7 @@ app.use('/api/tipos-receita', tipoReceitaRoutes);
 app.use('/api/classificacao', classificacaoRoutes);
 app.use('/api/analise', analiseRoutes);
 app.use('/api/contas-receber', contaReceberRoutes);
+app.use('/api/rag', ragRoutes);
 
 // Rota de health check
 app.get('/health', (req, res) => {
@@ -151,6 +153,11 @@ app.get('/', (req, res) => {
         atualizar: 'PUT /api/contas-receber/:id',
         inativar: 'PATCH /api/contas-receber/:id/inativar',
         reativar: 'PATCH /api/contas-receber/:id/reativar'
+      },
+      rag: {
+        indexar: 'POST /api/rag/index',
+        simples: 'POST /api/rag/simple',
+        embeddings: 'POST /api/rag/embeddings'
       },
       classificacao: {
         classificar: 'POST /api/classificacao/classificar',

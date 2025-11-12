@@ -3,14 +3,21 @@ const path = require('path');
 const pdfParse = require('pdf-parse');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const TipoDespesa = require('../models/TipoDespesa');
+const ClassificacaoService = require('./ClassificacaoService');
 
 class NotaFiscalAgentService {
   constructor() {
-    if (process.env.GEMINI_API_KEY) {
-      this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const disableAI = process.env.DISABLE_AI === 'true';
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey && !disableAI) {
+      this.genAI = new GoogleGenerativeAI(apiKey);
       this.model = this.genAI.getGenerativeModel({ model: "gemini-flash-latest" });
     } else {
-      console.warn('GEMINI_API_KEY não configurada. Usando extração básica de dados.');
+      if (disableAI) {
+        console.warn('IA desativada por configuração (DISABLE_AI=true). Usando extração básica.');
+      } else {
+        console.warn('GEMINI_API_KEY não configurada. Usando extração básica de dados.');
+      }
       this.model = null;
     }
   }
@@ -46,10 +53,37 @@ class NotaFiscalAgentService {
       } catch (error) {
         console.warn('Erro na classificação de despesa:', error.message);
       }
+
+      // Executa classificação prioritária com IA Gemini (serviço dedicado) e inclui no payload
+      let classificacao = null;
+      try {
+        const classificacaoService = new ClassificacaoService();
+        try {
+          classificacao = await classificacaoService.classificarComIA({
+            fornecedor: extractedData.fornecedor,
+            faturado: extractedData.faturado,
+            descricaoProdutos: extractedData.descricaoProdutos,
+            valorTotal: extractedData.valorTotal,
+            dataEmissao: extractedData.dataEmissao
+          });
+        } catch (iaErr) {
+          console.warn('⚠️ Falha na IA Gemini para classificação, usando fallback:', iaErr.message);
+          classificacao = await classificacaoService.classificarDespesa({
+            fornecedor: extractedData.fornecedor,
+            faturado: extractedData.faturado,
+            descricaoProdutos: extractedData.descricaoProdutos,
+            valorTotal: extractedData.valorTotal,
+            dataEmissao: extractedData.dataEmissao
+          });
+        }
+      } catch (error) {
+        console.warn('Erro na classificação automática:', error.message);
+      }
       
       return {
         ...extractedData,
         tipo_despesa_sugerido: tipoDespesa,
+        classificacao,
         arquivo_original: filename,
         texto_extraido: pdfText
       };
@@ -59,6 +93,11 @@ class NotaFiscalAgentService {
   }
 
   async extractDataWithGemini(pdfText) {
+    // Se IA estiver indisponível, usa extração básica imediatamente
+    if (!this.model) {
+      return this.extractDataBasic(pdfText);
+    }
+
     const prompt = `
 Você é um especialista em análise de notas fiscais brasileiras. Analise o texto extraído de uma nota fiscal e extraia os seguintes dados em formato JSON:
 
@@ -102,27 +141,60 @@ TEXTO DA NOTA FISCAL:
 ${pdfText}
 
 Responda APENAS com o JSON válido, sem explicações adicionais:`;
+    
+    // Implementa retry com exponential backoff e timeout, com fallback para extração básica
+    const maxRetries = 3;
+    let tentativa = 0;
+    let ultimoErro = null;
 
-    try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      // Limpar a resposta e extrair apenas o JSON
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Resposta do Gemini não contém JSON válido');
+    // Função para identificar erros recuperáveis (sobrecarregado/timeout/rate limit)
+    const isRetryableError = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('503') ||
+             msg.includes('service unavailable') ||
+             msg.includes('overloaded') ||
+             msg.includes('timeout') ||
+             msg.includes('rate limit');
+    };
+
+    while (tentativa < maxRetries) {
+      try {
+        // Exponential backoff com teto
+        const waitMs = tentativa > 0 ? Math.min(2000 * Math.pow(2, tentativa - 1), 10000) : 0;
+        if (waitMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+        }
+
+        // Timeout de 15s para evitar travas
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout ao aguardar resposta da IA')), 15000);
+        });
+
+        const resultPromise = this.model.generateContent(prompt);
+        const result = await Promise.race([resultPromise, timeoutPromise]);
+        const response = await result.response;
+        const text = response.text();
+
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Resposta do Gemini não contém JSON válido');
+        }
+
+        const extractedData = JSON.parse(jsonMatch[0]);
+        return this.validateAndFormatData(extractedData);
+      } catch (error) {
+        ultimoErro = error;
+        // Se erro não é recuperável, interrompe o loop
+        if (!isRetryableError(error)) {
+          break;
+        }
+        tentativa++;
       }
-      
-      const extractedData = JSON.parse(jsonMatch[0]);
-      
-      // Validar e formatar os dados extraídos
-      return this.validateAndFormatData(extractedData);
-      
-    } catch (error) {
-      console.error('Erro ao processar com IA:', error);
-      throw new Error(`Erro na análise com IA: ${error.message}`);
     }
+
+    // Fallback para extração básica em caso de falha
+    console.warn('Serviço de IA indisponível ou resposta inválida. Usando extração básica. Motivo:', ultimoErro ? ultimoErro.message : 'desconhecido');
+    return this.extractDataBasic(pdfText);
   }
 
   async extractDataBasic(pdfText) {

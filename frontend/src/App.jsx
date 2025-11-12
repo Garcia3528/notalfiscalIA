@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import PdfUpload from './components/PdfUpload'
 import AnaliseLancamento from './components/AnaliseLancamento'
+import RagConsulta from './components/RagConsulta'
 import './App.css'
 
 function App() {
@@ -66,6 +67,9 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Consulta RAG */}
+        <RagConsulta />
       </main>
 
 

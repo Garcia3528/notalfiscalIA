@@ -56,5 +56,9 @@ Write-Host "Verificando os containers em execução..." -ForegroundColor Green
 docker-compose ps
 
 Write-Host "Ambiente Docker iniciado com sucesso!" -ForegroundColor Green
-Write-Host "Frontend: http://localhost:3000" -ForegroundColor Cyan
-Write-Host "Backend: http://localhost:3001" -ForegroundColor Cyan
+$frontendPort = $env:FRONTEND_PORT
+if (-not $frontendPort) { $frontendPort = 80 }
+Write-Host ("Frontend: http://localhost:{0}" -f $frontendPort) -ForegroundColor Cyan
+$backendPort = $env:PORT
+if (-not $backendPort) { $backendPort = 3001 }
+Write-Host ("Backend: http://localhost:{0}" -f $backendPort) -ForegroundColor Cyan

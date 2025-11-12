@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react';
 import axios from 'axios';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 const PdfUpload = ({ onDataExtracted, onError }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -44,7 +44,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
     setClassification(null);
     
     try {
-      const response = await axios.post(`${API_BASE}/api/classificacao/classificar`, {
+      const response = await axios.post(`${API_BASE}/classificacao/classificar`, {
         dadosExtraidos: data,
         opcoes: {
           usarIA: true,
@@ -90,7 +90,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
-      const response = await axios.post(`${API_BASE}/api/pdf/upload`, formData, {
+      const response = await axios.post(`${API_BASE}/pdf/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -130,7 +130,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
-      const response = await fetch(`${API_BASE}/api/pdf/upload`, {
+      const response = await fetch(`${API_BASE}/pdf/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -483,6 +483,37 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
                                 </span>
                               </div>
                             )}
+                          </div>
+                        </div>
+
+                        {/* Presença/Ausência de Campos */}
+                        <div className="mt-6">
+                          <h5 className="font-semibold text-gray-900 mb-3">Validação dos Campos</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {[
+                              { label: 'Número', present: !!extractedData.numero },
+                              { label: 'Série', present: !!extractedData.serie },
+                              { label: 'Data Emissão', present: !!extractedData.dataEmissao },
+                              { label: 'Data Vencimento', present: !!extractedData.dataVencimento },
+                              { label: 'Valor Total', present: extractedData.valorTotal != null },
+                              { label: 'Parcelas', present: extractedData.quantidadeParcelas != null },
+                              { label: 'Fornecedor - Razão Social', present: !!extractedData.fornecedor?.razaoSocial },
+                              { label: 'Fornecedor - Nome Fantasia', present: !!extractedData.fornecedor?.nomeFantasia },
+                              { label: 'Fornecedor - CNPJ', present: !!extractedData.fornecedor?.cnpj },
+                              { label: 'Fornecedor - Endereço', present: !!extractedData.fornecedor?.endereco },
+                              { label: 'Faturado - Nome', present: !!extractedData.faturado?.nomeCompleto },
+                              { label: 'Faturado - CPF', present: !!extractedData.faturado?.cpf },
+                              { label: 'Faturado - CNPJ', present: !!extractedData.faturado?.cnpj },
+                              { label: 'Faturado - Endereço', present: !!extractedData.faturado?.endereco },
+                              { label: 'Descrição de Produtos/Serviços', present: !!extractedData.descricaoProdutos }
+                            ].map((field, idx) => (
+                              <div key={idx} className={`flex items-center justify-between px-3 py-2 rounded border ${field.present ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                                <span className="text-sm text-gray-800">{field.label}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${field.present ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                                  {field.present ? 'Presente' : 'Ausente'}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>

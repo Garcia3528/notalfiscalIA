@@ -33,8 +33,14 @@ class ClassificacaoController {
 
       const { dadosExtraidos, opcoes } = value;
 
-      // Realiza a classificação
-      const resultado = await this.classificacaoService.classificarDespesa(dadosExtraidos);
+      // Realiza a classificação prioritariamente com IA Gemini
+      let resultado;
+      try {
+        resultado = await this.classificacaoService.classificarComIA(dadosExtraidos);
+      } catch (e) {
+        console.warn('⚠️ Falha na IA Gemini, usando fallback por regras/keywords:', e.message);
+        resultado = await this.classificacaoService.classificarDespesa(dadosExtraidos);
+      }
 
       // Adiciona sugestões se solicitado
       let sugestoes = [];
@@ -131,7 +137,14 @@ class ClassificacaoController {
       // Processa cada despesa
       for (const despesa of despesas) {
         try {
-          const resultado = await this.classificacaoService.classificarDespesa(despesa.dadosExtraidos);
+          // Classificação prioritária com IA Gemini por item
+          let resultado;
+          try {
+            resultado = await this.classificacaoService.classificarComIA(despesa.dadosExtraidos);
+          } catch (e) {
+            console.warn(`⚠️ Falha na IA Gemini para despesa ${despesa.id}, usando fallback:`, e.message);
+            resultado = await this.classificacaoService.classificarDespesa(despesa.dadosExtraidos);
+          }
           const infoCategoria = this.classificacaoService.obterInfoCategoria(resultado.categoria);
 
           let sugestoes = [];
@@ -372,7 +385,14 @@ class ClassificacaoController {
         dataEmissao: "2024-01-15"
       };
 
-      const resultado = await this.classificacaoService.classificarDespesa(dadosExemplo);
+      // Usa IA Gemini no teste também, com fallback
+      let resultado;
+      try {
+        resultado = await this.classificacaoService.classificarComIA(dadosExemplo);
+      } catch (e) {
+        console.warn('⚠️ Falha na IA Gemini no teste, usando fallback:', e.message);
+        resultado = await this.classificacaoService.classificarDespesa(dadosExemplo);
+      }
       const sugestoes = await this.classificacaoService.sugerirCategorias(dadosExemplo, 3);
 
       res.json({

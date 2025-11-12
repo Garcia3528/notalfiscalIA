@@ -1,6 +1,7 @@
 const Fornecedor = require('../models/Fornecedor');
 const Faturado = require('../models/Faturado');
 const TipoDespesa = require('../models/TipoDespesa');
+const ClassificacaoService = require('../services/ClassificacaoService');
 const ContaPagar = require('../models/ContaPagar');
 
 class AnaliseController {
@@ -61,6 +62,10 @@ class AnaliseController {
     try {
       const dados = req.body?.dados || req.body || {};
       const criarSeNaoExistir = req.body?.criarSeNaoExistir ?? true;
+      const usarIA = req.body?.opcoes?.usarIA ?? true;
+
+      // Instancia serviço de classificação IA
+      const classificacaoService = new ClassificacaoService();
 
       // Checar/criar fornecedor
       let fornecedor = null;
@@ -92,14 +97,13 @@ class AnaliseController {
         });
       }
 
-      // Checar/criar classificação de despesa
+      // Checar/criar classificação de despesa usando IA Gemini
       let tipoDespesa = null;
       const despesaNome = dados.tipoDespesaNome || dados.tipo_despesa_sugerido?.nome || null;
-      
+
+      // 1) Se veio nome explícito, tentar usar ele primeiro
       if (despesaNome) {
-        // Primeiro, tentar encontrar por nome exato
         tipoDespesa = await TipoDespesa.findByNome(despesaNome);
-        
         if (!tipoDespesa && criarSeNaoExistir) {
           tipoDespesa = await TipoDespesa.create({
             nome: despesaNome,
@@ -109,15 +113,60 @@ class AnaliseController {
           });
         }
       }
-      
-      // Se não encontrou por nome específico, tentar classificação automática baseada na descrição dos produtos
-      if (!tipoDespesa && dados.descricaoProdutos) {
-        tipoDespesa = await TipoDespesa.classificarDespesa(dados.descricaoProdutos);
+
+      // 2) Executa classificação por IA Gemini para determinar categoria/subcategoria
+      let resultadoIA = null;
+      if (usarIA) {
+        try {
+          resultadoIA = await classificacaoService.classificarComIA({
+            fornecedor: dados.fornecedor,
+            faturado: dados.faturado,
+            descricaoProdutos: dados.descricaoProdutos,
+            valor: dados.valorTotal,
+            numero: dados.numero,
+            dataEmissao: dados.dataEmissao
+          });
+        } catch (e) {
+          console.warn('⚠️ Falha na classificação por IA, usando lógica de padrões:', e.message);
+          resultadoIA = await classificacaoService.classificarDespesa({
+            descricaoProdutos: dados.descricaoProdutos,
+            valor: dados.valorTotal
+          });
+        }
       }
-      
-      // Se ainda não encontrou, usar classificação genérica
+
+      // 3) Com base no resultado da IA, garantir que exista um tipo_despesa
+      if (!tipoDespesa && resultadoIA && resultadoIA.categoria) {
+        const categoriaIA = resultadoIA.categoria;
+        const nomeIA = resultadoIA.subcategoria || dados.tipo_despesa_sugerido?.nome || null;
+
+        // Prioriza buscar por nome da subcategoria indicada pela IA
+        if (nomeIA) {
+          tipoDespesa = await TipoDespesa.findByNome(nomeIA);
+        }
+
+        // Se não encontrou por nome, tenta pegar qualquer tipo existente naquela categoria
+        if (!tipoDespesa) {
+          const daCategoria = await TipoDespesa.findByCategoria(categoriaIA);
+          if (daCategoria && daCategoria.length > 0) {
+            tipoDespesa = daCategoria[0];
+          }
+        }
+
+        // Se ainda não existir, cria um novo tipo com base na IA
+        if (!tipoDespesa && criarSeNaoExistir) {
+          tipoDespesa = await TipoDespesa.create({
+            nome: nomeIA || `Despesa - ${categoriaIA}`,
+            descricao: resultadoIA.motivo || 'Classificado automaticamente pela IA',
+            categoria: categoriaIA,
+            ativo: true
+          });
+        }
+      }
+
+      // 4) Fallback final para classificação baseada em regras internas
       if (!tipoDespesa) {
-        tipoDespesa = await TipoDespesa.classificarDespesa('');
+        tipoDespesa = await TipoDespesa.classificarDespesa(dados.descricaoProdutos || '');
       }
 
       // Criar registro do movimento (conta a pagar)
@@ -147,7 +196,7 @@ class AnaliseController {
         dados_extraidos_json: dados // salva o payload bruto para auditoria
       };
 
-      const tiposDespesaIds = tipoDespesa ? [tipoDespesa.id] : [];
+      const tiposDespesaIds = tipoDespesa ? Array.from(new Set([tipoDespesa.id])) : [];
 
       const movimento = await ContaPagar.create(contaPagarData, parcelas, tiposDespesaIds);
 

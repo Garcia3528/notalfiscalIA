@@ -38,7 +38,14 @@ class PdfController {
       valorTotal: data.valorTotal ?? 0,
       dataVencimento: data.dataVencimento ?? null,
       quantidadeParcelas: data.quantidadeParcelas ?? 1,
-      tipo_despesa_sugerido: data.tipo_despesa_sugerido ?? null
+      tipo_despesa_sugerido: data.tipo_despesa_sugerido ?? null,
+      classificacao: data.classificacao ? {
+        categoria: data.classificacao.categoria ?? null,
+        subcategoria: data.classificacao.subcategoria ?? null,
+        confianca: data.classificacao.confianca ?? null,
+        motivo: data.classificacao.motivo ?? null,
+        fonte: data.classificacao.fonte ?? null
+      } : null
     };
   }
 
