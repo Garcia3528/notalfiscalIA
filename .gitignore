@@ -1,0 +1,23 @@
+# Root gitignore
+
+# Node
+**/node_modules/
+
+# Build outputs
+frontend/dist/
+
+# Env files
+.env
+backend/.env
+frontend/.env
+
+# Logs
+*.log
+
+# Uploads and generated files
+backend/uploads/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
