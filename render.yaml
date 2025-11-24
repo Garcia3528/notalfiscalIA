@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: notafiscal-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production

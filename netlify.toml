@@ -1,7 +1,9 @@
 [build]
   base = "frontend"
-  publish = "frontend/dist"
+  publish = "dist"
   command = "npm ci && npm run build"
+  # Ignora builds quando apenas o backend muda
+  ignore = "git diff --quiet HEAD^ HEAD ./frontend"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -10,7 +12,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Opcional: ignorar builds quando só o backend mudar
-[build]
-  ignore = "git diff --quiet HEAD^ HEAD ./frontend"
