@@ -2,15 +2,15 @@ const ClassificacaoService = require('../services/ClassificacaoService');
 const Joi = require('joi');
 
 class ClassificacaoController {
-  constructor() {
-    this.classificacaoService = new ClassificacaoService();
-  }
+  constructor() {}
 
   /**
    * Classifica uma despesa automaticamente
    */
   async classificar(req, res) {
     try {
+      const apiKeyOverride = req.headers['x-gemini-key'] || req.headers['X-Gemini-Key'];
+      const classificacaoService = new ClassificacaoService(apiKeyOverride);
       // Validação dos dados de entrada
       const schema = Joi.object({
         dadosExtraidos: Joi.object().required(),
@@ -36,10 +36,10 @@ class ClassificacaoController {
       // Realiza a classificação prioritariamente com IA Gemini
       let resultado;
       try {
-        resultado = await this.classificacaoService.classificarComIA(dadosExtraidos);
+        resultado = await classificacaoService.classificarComIA(dadosExtraidos);
       } catch (e) {
         console.warn('⚠️ Falha na IA Gemini, usando fallback por regras/keywords:', e.message);
-        resultado = await this.classificacaoService.classificarDespesa(dadosExtraidos);
+        resultado = await classificacaoService.classificarDespesa(dadosExtraidos);
       }
 
       // Adiciona sugestões se solicitado
@@ -52,7 +52,7 @@ class ClassificacaoController {
       }
 
       // Adiciona informações da categoria
-      const infoCategoria = this.classificacaoService.obterInfoCategoria(resultado.categoria);
+      const infoCategoria = classificacaoService.obterInfoCategoria(resultado.categoria);
 
       res.json({
         success: true,
@@ -109,6 +109,8 @@ class ClassificacaoController {
    */
   async classificarLote(req, res) {
     try {
+      const apiKeyOverride = req.headers['x-gemini-key'] || req.headers['X-Gemini-Key'];
+      const classificacaoService = new ClassificacaoService(apiKeyOverride);
       const schema = Joi.object({
         despesas: Joi.array().items(
           Joi.object({
@@ -140,12 +142,12 @@ class ClassificacaoController {
           // Classificação prioritária com IA Gemini por item
           let resultado;
           try {
-            resultado = await this.classificacaoService.classificarComIA(despesa.dadosExtraidos);
+            resultado = await classificacaoService.classificarComIA(despesa.dadosExtraidos);
           } catch (e) {
             console.warn(`⚠️ Falha na IA Gemini para despesa ${despesa.id}, usando fallback:`, e.message);
-            resultado = await this.classificacaoService.classificarDespesa(despesa.dadosExtraidos);
+            resultado = await classificacaoService.classificarDespesa(despesa.dadosExtraidos);
           }
-          const infoCategoria = this.classificacaoService.obterInfoCategoria(resultado.categoria);
+          const infoCategoria = classificacaoService.obterInfoCategoria(resultado.categoria);
 
           let sugestoes = [];
           if (opcoes.incluirSugestoes) {

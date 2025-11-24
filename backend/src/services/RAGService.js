@@ -2,14 +2,31 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { supabase, isSupabaseConfigured } = require('../config/supabase');
 
 class RAGService {
-  constructor() {
+  constructor(apiKeyOverride = null, genModelOverride = null, embedModelOverride = null) {
     this.disabled = process.env.DISABLE_AI === 'true';
     this.topK = parseInt(process.env.RAG_TOP_K || '8', 10);
     this.similarityThreshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.2');
 
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.embedModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-    this.genModel = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    this.apiKey = apiKeyOverride || process.env.GEMINI_API_KEY || null;
+    this.genModelName = genModelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest';
+    this.embedModelName = embedModelOverride || process.env.GEMINI_EMBED_MODEL || 'text-embedding-004';
+
+    if (!this.disabled && this.apiKey) {
+      try {
+        this.genAI = new GoogleGenerativeAI(this.apiKey);
+        this.embedModel = this.genAI.getGenerativeModel({ model: this.embedModelName });
+        this.genModel = this.genAI.getGenerativeModel({ model: this.genModelName });
+      } catch (e) {
+        console.warn('Falha ao inicializar modelos Gemini no RAGService:', e.message);
+        this.genAI = null;
+        this.embedModel = null;
+        this.genModel = null;
+      }
+    } else {
+      this.genAI = null;
+      this.embedModel = null;
+      this.genModel = null;
+    }
   }
 
   // Util: quebra conteúdo em chunks simples por parágrafos
@@ -40,8 +57,27 @@ class RAGService {
 
   async embedText(text) {
     if (this.disabled) throw new Error('IA desativada (DISABLE_AI=true)');
-    const res = await this.embedModel.embedContent(text);
-    return res.embedding.values;
+    if (!this.embedModel) throw new Error('Serviço de embeddings indisponível (chave ausente ou inválida)');
+    const isQuotaExceeded = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('429') || msg.includes('too many requests') || msg.includes('quota');
+    };
+    const isInvalidKey = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('api key invalid') || msg.includes('api key expired') || msg.includes('permission_denied') || msg.includes("method doesn't allow unregistered callers");
+    };
+    try {
+      const res = await this.embedModel.embedContent(text);
+      return res.embedding.values;
+    } catch (e) {
+      if (isInvalidKey(e)) {
+        throw new Error('Chave da API Gemini inválida/expirada para embeddings');
+      }
+      if (isQuotaExceeded(e)) {
+        throw new Error('Quota de embeddings excedida');
+      }
+      throw e;
+    }
   }
 
   async indexDocuments(documents) {
@@ -75,12 +111,33 @@ class RAGService {
       return { contexts: [] };
     }
     const queryEmbedding = await this.embedText(question);
-    const { data, error } = await supabase.rpc('match_rag_chunks', {
-      query_embedding: queryEmbedding,
-      match_count: topK,
-      similarity_threshold: similarityThreshold
-    });
-    if (error) throw new Error('Erro na busca por embeddings: ' + error.message);
+    let data, error;
+    try {
+      const res = await supabase.rpc('match_rag_chunks', {
+        query_embedding: queryEmbedding,
+        match_count: topK,
+        similarity_threshold: similarityThreshold
+      });
+      data = res.data;
+      error = res.error;
+    } catch (e) {
+      const msg = (e && e.message) ? e.message.toLowerCase() : '';
+      const isSchemaMissing = msg.includes('schema cache') || msg.includes('does not exist');
+      const mentionsRag = msg.includes('rag_chunks') || msg.includes('match_rag_chunks');
+      if (isSchemaMissing && mentionsRag) {
+        throw new Error('Schema RAG não instalado no Supabase. Execute backend/scripts/supabase-full.sql para criar a tabela rag_chunks e a função match_rag_chunks.');
+      }
+      throw new Error('Erro na busca por embeddings: ' + (e.message || String(e)));
+    }
+    if (error) {
+      const msg = (error && error.message) ? error.message.toLowerCase() : '';
+      const isSchemaMissing = msg.includes('schema cache') || msg.includes('does not exist');
+      const mentionsRag = msg.includes('rag_chunks') || msg.includes('match_rag_chunks');
+      if (isSchemaMissing && mentionsRag) {
+        throw new Error('Schema RAG não instalado no Supabase. Execute backend/scripts/supabase-full.sql para criar a tabela rag_chunks e a função match_rag_chunks.');
+      }
+      throw new Error('Erro na busca por embeddings: ' + error.message);
+    }
     const contexts = (data || []).map(row => ({
       id: row.id,
       title: row.title,
@@ -97,13 +154,52 @@ class RAGService {
     }
     const tokens = String(question || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t => t.length >= 3);
     if (tokens.length === 0) return { contexts: [] };
-    // monta filtro OR com ilike
-    const ors = tokens.slice(0, 5).map(t => `content.ilike.%${t}%`).join(',');
+    // monta filtro OR com ilike em content e title
+    const ors = tokens.slice(0, 5).flatMap(t => [
+      `content.ilike.%${t}%`,
+      `title.ilike.%${t}%`
+    ]).join(',');
     let query = supabase.from('rag_chunks').select('id,title,content,metadata').limit(topK);
     if (ors) query = query.or(ors);
-    const { data, error } = await query;
-    if (error) throw new Error('Erro na busca simples: ' + error.message);
-    return { contexts: data || [] };
+    try {
+      let { data, error } = await query;
+      if (error) {
+        const msg = (error && error.message) ? error.message.toLowerCase() : '';
+        const isSchemaMissing = msg.includes('schema cache') || msg.includes('does not exist');
+        const mentionsRag = msg.includes('rag_chunks');
+        if (isSchemaMissing && mentionsRag) {
+          throw new Error('Schema RAG não instalado no Supabase. Execute backend/scripts/supabase-full.sql para criar a tabela rag_chunks.');
+        }
+        throw new Error('Erro na busca simples: ' + error.message);
+      }
+      // Fallback: se nada encontrado via tokens, tenta por frase inteira no content
+      if ((!data || data.length === 0) && tokens.length >= 1) {
+        const phrase = String(question || '').trim();
+        const { data: dataPhrase, error: errPhrase } = await supabase
+          .from('rag_chunks')
+          .select('id,title,content,metadata')
+          .ilike('content', `%${phrase}%`)
+          .limit(topK);
+        if (errPhrase) {
+          const msg = (errPhrase && errPhrase.message) ? errPhrase.message.toLowerCase() : '';
+          const isSchemaMissing = msg.includes('schema cache') || msg.includes('does not exist');
+          const mentionsRag = msg.includes('rag_chunks');
+          if (isSchemaMissing && mentionsRag) {
+            throw new Error('Schema RAG não instalado no Supabase. Execute backend/scripts/supabase-full.sql para criar a tabela rag_chunks.');
+          }
+        }
+        data = dataPhrase || [];
+      }
+      return { contexts: data || [] };
+    } catch (e) {
+      const msg = (e && e.message) ? e.message.toLowerCase() : '';
+      const isSchemaMissing = msg.includes('schema cache') || msg.includes('does not exist');
+      const mentionsRag = msg.includes('rag_chunks');
+      if (isSchemaMissing && mentionsRag) {
+        throw new Error('Schema RAG não instalado no Supabase. Execute backend/scripts/supabase-full.sql para criar a tabela rag_chunks.');
+      }
+      throw new Error('Erro na busca simples: ' + (e.message || String(e)));
+    }
   }
 
   buildPrompt(question, contexts) {
@@ -117,6 +213,9 @@ class RAGService {
     if (this.disabled) {
       return { answer: 'IA desativada (DISABLE_AI=true).', sources: [], mode };
     }
+    if (!this.genModel) {
+      throw new Error('Serviço de geração indisponível (chave ausente ou inválida)');
+    }
     let contexts = [];
     if (mode === 'simple') {
       const { contexts: ctx } = await this.retrieveSimple(question);
@@ -124,12 +223,43 @@ class RAGService {
     } else {
       const { contexts: ctx } = await this.retrieveByEmbeddings(question);
       contexts = ctx;
+      // Fallback automático: se embeddings não retornarem nada, tenta simples
+      if (!contexts || contexts.length === 0) {
+        const { contexts: ctxSimple } = await this.retrieveSimple(question);
+        contexts = ctxSimple;
+        mode = 'simple';
+      }
     }
 
     const prompt = this.buildPrompt(question, contexts);
-    const result = await this.genModel.generateContent(prompt);
-    const text = result.response.text();
-    return { answer: text, sources: contexts, mode };
+    const isQuotaExceeded = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('429') || msg.includes('too many requests') || msg.includes('quota');
+    };
+    const isInvalidKey = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('api key invalid') || msg.includes('api key expired') || msg.includes('permission_denied') || msg.includes("method doesn't allow unregistered callers");
+    };
+    try {
+      const result = await this.genModel.generateContent(prompt);
+      const text = result.response.text();
+      if (!contexts || contexts.length === 0) {
+        return {
+          answer: 'Com base nos contextos disponíveis, não encontrei trechos relevantes para responder. Tente reformular a pergunta ou indexar documentos contendo os termos desejados.',
+          sources: [],
+          mode
+        };
+      }
+      return { answer: text, sources: contexts, mode };
+    } catch (e) {
+      if (isInvalidKey(e)) {
+        throw new Error('Chave da API Gemini inválida/expirada para geração');
+      }
+      if (isQuotaExceeded(e)) {
+        throw new Error('Quota de geração excedida');
+      }
+      throw e;
+    }
   }
 }
 

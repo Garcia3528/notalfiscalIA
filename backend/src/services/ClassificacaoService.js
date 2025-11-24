@@ -1,9 +1,21 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class ClassificacaoService {
-  constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+  constructor(apiKeyOverride = null) {
+    this.apiKey = apiKeyOverride || process.env.GEMINI_API_KEY;
+    this.aiDisabled = process.env.DISABLE_AI === 'true';
+    this.genAI = null;
+    this.model = null;
+
+    if (this.apiKey && !this.aiDisabled) {
+      try {
+        this.genAI = new GoogleGenerativeAI(this.apiKey);
+        this.model = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+      } catch (e) {
+        console.warn('Falha ao inicializar cliente Gemini na ClassificacaoService:', e.message);
+        this.model = null;
+      }
+    }
     
     // Categorias padrão de despesas
     this.categorias = {
@@ -462,7 +474,7 @@ RESPOSTA (JSON):
 
     try {
       // Verifica se o serviço de IA está disponível
-      if (!process.env.GEMINI_API_KEY || process.env.DISABLE_AI === 'true') {
+      if (!this.apiKey || this.aiDisabled || !this.model) {
         console.log('⚠️ Serviço de IA desativado ou chave não configurada, usando classificação avançada por padrões');
         return this.classificarPorPadroesAvancados(dados);
       }
@@ -471,6 +483,13 @@ RESPOSTA (JSON):
       const maxRetries = 3;
       let tentativa = 0;
       let ultimoErro = null;
+      const isQuotaExceeded = (err) => {
+        const msg = (err && err.message) ? err.message.toLowerCase() : '';
+        return msg.includes('429') ||
+               msg.includes('too many requests') ||
+               msg.includes('quota') ||
+               msg.includes('exceeded your current quota');
+      };
       
       while (tentativa < maxRetries) {
         try {
@@ -583,6 +602,11 @@ RESPOSTA (JSON):
         } catch (error) {
           console.error(`Erro na tentativa ${tentativa + 1}:`, error);
           ultimoErro = error;
+          
+          if (isQuotaExceeded(error)) {
+            console.log('⚠️ Quota de Gemini excedida. Interrompendo tentativas e usando fallback.');
+            break;
+          }
           
           // Verifica se é um erro que justifica retry
           const errorMessage = error.message || '';

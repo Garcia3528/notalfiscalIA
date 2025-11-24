@@ -16,9 +16,13 @@ export default function RagConsulta() {
     setAnswer('')
     setSources([])
     try {
+      const geminiKey = localStorage.getItem('geminiKey') || ''
       const res = await fetch(`${API_BASE}/rag/${mode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(geminiKey ? { 'X-Gemini-Key': geminiKey } : {})
+        },
         body: JSON.stringify({ question })
       })
       const data = await res.json()

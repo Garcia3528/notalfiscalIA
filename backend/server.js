@@ -14,7 +14,10 @@ const analiseRoutes = require('./src/routes/analiseRoutes');
 const clienteRoutes = require('./src/routes/clienteRoutes');
 const tipoReceitaRoutes = require('./src/routes/tipoReceitaRoutes');
 const contaReceberRoutes = require('./src/routes/contaReceberRoutes');
+const contaPagarRoutes = require('./src/routes/contaPagarRoutes');
+const faturadoRoutes = require('./src/routes/faturadoRoutes');
 const ragRoutes = require('./src/routes/ragRoutes');
+const aiRoutes = require('./src/routes/aiRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -82,7 +85,10 @@ app.use('/api/tipos-receita', tipoReceitaRoutes);
 app.use('/api/classificacao', classificacaoRoutes);
 app.use('/api/analise', analiseRoutes);
 app.use('/api/contas-receber', contaReceberRoutes);
+app.use('/api/contas-pagar', contaPagarRoutes);
+app.use('/api/faturados', faturadoRoutes);
 app.use('/api/rag', ragRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Rota de health check
 app.get('/health', (req, res) => {
@@ -153,6 +159,23 @@ app.get('/', (req, res) => {
         atualizar: 'PUT /api/contas-receber/:id',
         inativar: 'PATCH /api/contas-receber/:id/inativar',
         reativar: 'PATCH /api/contas-receber/:id/reativar'
+      },
+      contasPagar: {
+        listar: 'GET /api/contas-pagar',
+        buscarPorId: 'GET /api/contas-pagar/:id',
+        criar: 'POST /api/contas-pagar',
+        atualizar: 'PUT /api/contas-pagar/:id',
+        inativar: 'PATCH /api/contas-pagar/:id/inativar',
+        reativar: 'PATCH /api/contas-pagar/:id/reativar'
+      },
+      faturados: {
+        listar: 'GET /api/faturados',
+        buscar: 'GET /api/faturados/buscar',
+        buscarPorId: 'GET /api/faturados/:id',
+        criar: 'POST /api/faturados',
+        atualizar: 'PUT /api/faturados/:id',
+        inativar: 'PATCH /api/faturados/:id/inativar',
+        reativar: 'PATCH /api/faturados/:id/reativar'
       },
       rag: {
         indexar: 'POST /api/rag/index',

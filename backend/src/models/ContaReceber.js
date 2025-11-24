@@ -13,8 +13,18 @@ class ContaReceber extends BaseModel {
       let req = supabase.from('contas_receber').select('*');
       if (ativo !== undefined) req = req.eq('ativo', ativo);
       if (status) req = req.eq('status', status);
-      const { data, error } = await req.order('data_vencimento', { ascending: true });
-      if (error) throw error;
+      // Tenta ordenar por data_vencimento; se a coluna não existir, faz fallback para data_emissao
+      let { data, error } = await req.order('data_vencimento', { ascending: true });
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('does not exist') || msg.includes('não existe') || msg.includes('unknown column') || msg.includes('column')) {
+          // Fallback: tenta novamente ordenando por data_emissao
+          const retry = await req.order('data_emissao', { ascending: true });
+          if (retry.error) throw retry.error;
+          return retry.data;
+        }
+        throw error;
+      }
       return data;
       } catch (error) {
         console.log('Erro no Supabase, usando fallback PostgreSQL:', error.message);
@@ -22,10 +32,16 @@ class ContaReceber extends BaseModel {
       }
     }
       const params = [];
-      let sql = 'SELECT * FROM contas_receber WHERE 1=1';
-      if (ativo !== undefined) { params.push(ativo); sql += ` AND ativo = $${params.length}`; }
-      if (status) { params.push(status); sql += ` AND status = $${params.length}`; }
-      sql += ' ORDER BY data_vencimento ASC';
+      let sqlBase = 'SELECT * FROM contas_receber WHERE 1=1';
+      if (ativo !== undefined) { params.push(ativo); sqlBase += ` AND ativo = $${params.length}`; }
+      if (status) { params.push(status); sqlBase += ` AND status = $${params.length}`; }
+
+      // Verifica se a coluna data_vencimento existe; se não, ordena por data_emissao
+      const existsRes = await query(
+        `SELECT 1 FROM information_schema.columns WHERE table_name = 'contas_receber' AND column_name = 'data_vencimento'`
+      );
+      const hasVencimento = existsRes.rowCount > 0;
+      const sql = `${sqlBase} ORDER BY ${hasVencimento ? 'data_vencimento' : 'data_emissao'} ASC`;
       const result = await query(sql, params);
       return result.rows;
     }

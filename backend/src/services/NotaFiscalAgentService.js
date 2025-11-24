@@ -6,12 +6,18 @@ const TipoDespesa = require('../models/TipoDespesa');
 const ClassificacaoService = require('./ClassificacaoService');
 
 class NotaFiscalAgentService {
-  constructor() {
+  constructor(apiKeyOverride = null, modelOverride = null) {
     const disableAI = process.env.DISABLE_AI === 'true';
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey && !disableAI) {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    this.apiKey = apiKeyOverride || process.env.GEMINI_API_KEY;
+    this.modelName = modelOverride || process.env.GEMINI_MODEL || 'gemini-flash-latest';
+    if (this.apiKey && !disableAI) {
+      try {
+        this.genAI = new GoogleGenerativeAI(this.apiKey);
+        this.model = this.genAI.getGenerativeModel({ model: this.modelName });
+      } catch (e) {
+        console.warn('Falha ao inicializar cliente Gemini na NotaFiscalAgentService:', e.message);
+        this.model = null;
+      }
     } else {
       if (disableAI) {
         console.warn('IA desativada por configuração (DISABLE_AI=true). Usando extração básica.');
@@ -57,7 +63,7 @@ class NotaFiscalAgentService {
       // Executa classificação prioritária com IA Gemini (serviço dedicado) e inclui no payload
       let classificacao = null;
       try {
-        const classificacaoService = new ClassificacaoService();
+        const classificacaoService = new ClassificacaoService(this.apiKey, this.modelName);
         try {
           classificacao = await classificacaoService.classificarComIA({
             fornecedor: extractedData.fornecedor,
@@ -95,7 +101,8 @@ class NotaFiscalAgentService {
   async extractDataWithGemini(pdfText) {
     // Se IA estiver indisponível, usa extração básica imediatamente
     if (!this.model) {
-      return this.extractDataBasic(pdfText);
+      const basic = await this.extractDataBasic(pdfText);
+      return { ...basic, ai_status: 'disabled', ai_error: null };
     }
 
     const prompt = `
@@ -146,6 +153,8 @@ Responda APENAS com o JSON válido, sem explicações adicionais:`;
     const maxRetries = 3;
     let tentativa = 0;
     let ultimoErro = null;
+    let aiStatus = null;
+    let aiErrorMessage = null;
 
     // Função para identificar erros recuperáveis (sobrecarregado/timeout/rate limit)
     const isRetryableError = (err) => {
@@ -155,6 +164,24 @@ Responda APENAS com o JSON válido, sem explicações adicionais:`;
              msg.includes('overloaded') ||
              msg.includes('timeout') ||
              msg.includes('rate limit');
+    };
+
+    // Função para identificar erro de quota excedida (429) e evitar retries inúteis
+    const isQuotaExceeded = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('429') ||
+             msg.includes('too many requests') ||
+             msg.includes('quota') ||
+             msg.includes('exceeded your current quota');
+    };
+
+    // Função para identificar chave inválida/expirada ou chamada sem identidade
+    const isInvalidKey = (err) => {
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      return msg.includes('api key invalid') ||
+             msg.includes('api key expired') ||
+             msg.includes('permission_denied') ||
+             msg.includes("method doesn't allow unregistered callers");
     };
 
     while (tentativa < maxRetries) {
@@ -184,6 +211,17 @@ Responda APENAS com o JSON válido, sem explicações adicionais:`;
         return this.validateAndFormatData(extractedData);
       } catch (error) {
         ultimoErro = error;
+        if (isInvalidKey(error)) {
+          aiStatus = 'invalid_key';
+          aiErrorMessage = error.message;
+          console.warn('Chave Gemini inválida/expirada. Evitando novas tentativas.');
+          break;
+        }
+        // Se quota foi excedida, interrompe imediatamente e usa fallback
+        if (isQuotaExceeded(error)) {
+          console.warn('Quota de Gemini excedida. Evitando novas tentativas.');
+          break;
+        }
         // Se erro não é recuperável, interrompe o loop
         if (!isRetryableError(error)) {
           break;
@@ -194,7 +232,8 @@ Responda APENAS com o JSON válido, sem explicações adicionais:`;
 
     // Fallback para extração básica em caso de falha
     console.warn('Serviço de IA indisponível ou resposta inválida. Usando extração básica. Motivo:', ultimoErro ? ultimoErro.message : 'desconhecido');
-    return this.extractDataBasic(pdfText);
+    const basic = await this.extractDataBasic(pdfText);
+    return { ...basic, ai_status: aiStatus || (isQuotaExceeded(ultimoErro) ? 'quota_exceeded' : 'fallback'), ai_error: aiErrorMessage || (ultimoErro ? ultimoErro.message : null) };
   }
 
   async extractDataBasic(pdfText) {

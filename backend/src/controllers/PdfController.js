@@ -4,7 +4,7 @@ const ContaPagar = require('../models/ContaPagar');
 
 class PdfController {
   constructor() {
-    this.notaFiscalAgent = new NotaFiscalAgentService();
+    // Instanciação será feita por requisição para suportar override de chave via header
     
     // Bind dos métodos para garantir que o this funcione corretamente
     this.uploadAndProcess = this.uploadAndProcess.bind(this);
@@ -22,6 +22,8 @@ class PdfController {
       numero: data.numero ?? null,
       serie: data.serie ?? null,
       dataEmissao: data.dataEmissao ?? null,
+      ai_status: data.ai_status ?? null,
+      ai_error: data.ai_error ?? null,
       fornecedor: {
         razaoSocial: data.fornecedor?.razaoSocial ?? null,
         nomeFantasia: data.fornecedor?.nomeFantasia ?? null,
@@ -59,8 +61,12 @@ class PdfController {
         });
       }
 
+      // Chave Gemini opcional por requisição via header
+      const apiKey = req.headers['x-gemini-key'] || undefined;
+      const agent = new NotaFiscalAgentService(apiKey);
+
       // Processar o PDF
-      const result = await this.notaFiscalAgent.processUploadedPdf(req.file);
+      const result = await agent.processUploadedPdf(req.file);
       const filtered = this.filterUsefulData(result);
 
       res.json({
@@ -88,8 +94,12 @@ class PdfController {
         });
       }
 
+      // Chave Gemini opcional por requisição via header
+      const apiKey = req.headers['x-gemini-key'] || undefined;
+      const agent = new NotaFiscalAgentService(apiKey);
+
       // Processar o PDF
-      const extractedData = await this.notaFiscalAgent.processUploadedPdf(req.file);
+      const extractedData = await agent.processUploadedPdf(req.file);
 
       // Verificar/criar fornecedor
       let fornecedor = null;
@@ -174,8 +184,12 @@ class PdfController {
       // Ler arquivo
       const pdfBuffer = fs.readFileSync(filepath);
       
+      // Chave Gemini opcional por requisição via header
+      const apiKey = req.headers['x-gemini-key'] || undefined;
+      const agent = new NotaFiscalAgentService(apiKey);
+
       // Processar novamente
-      const result = await this.notaFiscalAgent.processNotaFiscal(pdfBuffer, filename);
+      const result = await agent.processNotaFiscal(pdfBuffer, filename);
       const filtered = this.filterUsefulData(result);
 
       res.json({

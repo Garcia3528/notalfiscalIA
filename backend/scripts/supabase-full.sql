@@ -218,18 +218,37 @@ CREATE INDEX IF NOT EXISTS idx_contas_pagar_dados_extraidos_gin ON contas_pagar 
 CREATE INDEX IF NOT EXISTS idx_contas_receber_dados_extraidos_gin ON contas_receber USING GIN (dados_extraidos);
 CREATE INDEX IF NOT EXISTS idx_feedback_dados_extraidos_gin ON classificacao_feedback USING GIN (dados_extraidos);
 
--- =============================
 -- TRIGGERS updated_at
 -- =============================
+-- Torna idempotente para evitar erros ao reexecutar o script
+DROP TRIGGER IF EXISTS update_fornecedores_updated_at ON fornecedores;
 CREATE TRIGGER update_fornecedores_updated_at BEFORE UPDATE ON fornecedores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_faturados_updated_at ON faturados;
 CREATE TRIGGER update_faturados_updated_at BEFORE UPDATE ON faturados FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_tipos_despesa_updated_at ON tipos_despesa;
 CREATE TRIGGER update_tipos_despesa_updated_at BEFORE UPDATE ON tipos_despesa FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_contas_pagar_updated_at ON contas_pagar;
 CREATE TRIGGER update_contas_pagar_updated_at BEFORE UPDATE ON contas_pagar FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_parcelas_updated_at ON parcelas;
 CREATE TRIGGER update_parcelas_updated_at BEFORE UPDATE ON parcelas FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_clientes_updated_at ON clientes;
 CREATE TRIGGER update_clientes_updated_at BEFORE UPDATE ON clientes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_tipos_receita_updated_at ON tipos_receita;
 CREATE TRIGGER update_tipos_receita_updated_at BEFORE UPDATE ON tipos_receita FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_contas_receber_updated_at ON contas_receber;
 CREATE TRIGGER update_contas_receber_updated_at BEFORE UPDATE ON contas_receber FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_parcelas_receber_updated_at ON parcelas_receber;
 CREATE TRIGGER update_parcelas_receber_updated_at BEFORE UPDATE ON parcelas_receber FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_classificacao_feedback_updated_at ON classificacao_feedback;
 CREATE TRIGGER update_classificacao_feedback_updated_at BEFORE UPDATE ON classificacao_feedback FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================

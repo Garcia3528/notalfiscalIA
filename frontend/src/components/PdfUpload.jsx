@@ -44,6 +44,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
     setClassification(null);
     
     try {
+      const geminiKey = localStorage.getItem('geminiKey') || '';
       const response = await axios.post(`${API_BASE}/classificacao/classificar`, {
         dadosExtraidos: data,
         opcoes: {
@@ -51,6 +52,8 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
           incluirSugestoes: true,
           limiteSugestoes: 3
         }
+      }, {
+        headers: geminiKey ? { 'X-Gemini-Key': geminiKey } : {}
       });
 
       if (response.data.success) {
@@ -90,9 +93,11 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
+      const geminiKey = localStorage.getItem('geminiApiKey') || '';
       const response = await axios.post(`${API_BASE}/pdf/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          ...(geminiKey ? { 'X-Gemini-Key': geminiKey } : {})
         },
         onUploadProgress: (progressEvent) => {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -102,6 +107,12 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
 
       if (response.data.success) {
         const data = response.data.data;
+        if (data?.ai_status === 'invalid_key') {
+          // Limpa chave inválida e solicita nova
+          localStorage.removeItem('geminiKey');
+          delete axios.defaults.headers.common['X-Gemini-Key'];
+          window.dispatchEvent(new CustomEvent('gemini:require-key', { detail: { reason: 'invalid_key' } }));
+        }
         setExtractedData(data);
         onDataExtracted?.(data);
         
@@ -130,15 +141,22 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
+      const geminiKey = localStorage.getItem('geminiKey') || '';
       const response = await fetch(`${API_BASE}/pdf/upload`, {
         method: 'POST',
         body: formData,
+        headers: geminiKey ? { 'X-Gemini-Key': geminiKey } : {}
       });
 
       const result = await response.json();
 
       if (result.success) {
         const data = result.data;
+        if (data?.ai_status === 'invalid_key') {
+          localStorage.removeItem('geminiKey');
+          delete axios.defaults.headers.common['X-Gemini-Key'];
+          window.dispatchEvent(new CustomEvent('gemini:require-key', { detail: { reason: 'invalid_key' } }));
+        }
         setExtractedData(data);
         if (onDataExtracted) {
           onDataExtracted(data);
