@@ -100,6 +100,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Alias de health dentro do namespace da API
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Servidor funcionando',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // Rota raiz
 app.get('/', (req, res) => {
   res.json({
@@ -108,6 +118,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
+      apiHealth: '/api/health',
       pdf: {
         upload: 'POST /api/pdf/upload',
         processAndSave: 'POST /api/pdf/process-and-save',
