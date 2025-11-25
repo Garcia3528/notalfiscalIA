@@ -57,18 +57,33 @@ const uploadLimiter = rateLimit({
 });
 
 // CORS
+// Permite configurar origens adicionais via variável de ambiente
+const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  'http://localhost:5174'
+  'http://localhost:5174',
+  'https://localhost:5173',
+  'https://localhost:5174',
+  ...extraOrigins,
 ];
+
 app.use(cors({
   origin: (origin, callback) => {
     // Permitir chamadas de ferramentas e servidores internos (sem origin)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    // Em desenvolvimento, liberar outras origens locais
-    if (origin.startsWith('http://localhost')) return callback(null, true);
-    return callback(new Error('CORS: Origem não permitida'));
+    // Libera localhost (http/https) em desenvolvimento
+    if (origin.startsWith('http://localhost') || origin.startsWith('https://localhost')) {
+      return callback(null, true);
+    }
+    // Libera origens configuradas
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: Origem não permitida: ${origin}`));
   },
   credentials: true
 }));

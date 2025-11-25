@@ -11,3 +11,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: FRONTEND_URL
+        value: https://notalfiscalia.netlify.app
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://notalfiscalia.netlify.app
