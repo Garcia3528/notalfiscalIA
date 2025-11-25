@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE } from '../utils/apiBase';
 
 function GeminiKeyModal() {
   const [visible, setVisible] = useState(false);

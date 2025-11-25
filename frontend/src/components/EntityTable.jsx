@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import EntityFormModal from './EntityFormModal';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+import { API_BASE } from '../utils/apiBase';
 
 export default function EntityTable({
   title,

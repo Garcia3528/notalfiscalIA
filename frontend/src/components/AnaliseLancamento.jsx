@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+import { API_BASE } from '../utils/apiBase';
 
 const StatusBadge = ({ exists }) => (
   <span className={`px-2 py-1 rounded text-xs font-medium ${exists ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react';
 import axios from 'axios';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+import { API_BASE, getGeminiKey } from '../utils/apiBase';
 
 const PdfUpload = ({ onDataExtracted, onError }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -44,7 +44,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
     setClassification(null);
     
     try {
-      const geminiKey = localStorage.getItem('geminiKey') || '';
+      const geminiKey = getGeminiKey();
       const response = await axios.post(`${API_BASE}/classificacao/classificar`, {
         dadosExtraidos: data,
         opcoes: {
@@ -93,7 +93,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
-      const geminiKey = localStorage.getItem('geminiApiKey') || '';
+      const geminiKey = getGeminiKey();
       const response = await axios.post(`${API_BASE}/pdf/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -141,7 +141,7 @@ const PdfUpload = ({ onDataExtracted, onError }) => {
       const formData = new FormData();
       formData.append('pdf', file);
 
-      const geminiKey = localStorage.getItem('geminiKey') || '';
+      const geminiKey = getGeminiKey();
       const response = await fetch(`${API_BASE}/pdf/upload`, {
         method: 'POST',
         body: formData,

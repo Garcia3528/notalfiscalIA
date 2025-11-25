@@ -1,6 +1,5 @@
 import { useState } from 'react'
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+import { API_BASE, getGeminiKey } from '../utils/apiBase'
 
 export default function RagConsulta() {
   const [question, setQuestion] = useState('')
@@ -16,7 +15,7 @@ export default function RagConsulta() {
     setAnswer('')
     setSources([])
     try {
-      const geminiKey = localStorage.getItem('geminiKey') || ''
+      const geminiKey = getGeminiKey()
       const res = await fetch(`${API_BASE}/rag/${mode}`, {
         method: 'POST',
         headers: {
