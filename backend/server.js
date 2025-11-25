@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const { isDatabaseConfigured } = require('./src/config/database');
+const { isSupabaseConfigured, isSupabaseConnected, testSupabaseConnection } = require('./src/config/supabase');
 
 // Importar rotas
 const pdfRoutes = require('./src/routes/pdfRoutes');
@@ -57,6 +59,12 @@ const uploadLimiter = rateLimit({
 });
 
 // CORS
+// Permitir configuração via FRONTEND_URL (pode vir com múltiplos separados por vírgula)
+const frontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 // Permite configurar origens adicionais via variável de ambiente
 const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
@@ -64,7 +72,7 @@ const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .filter(Boolean);
 
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:5173',
+  ...frontendOrigins,
   'http://localhost:5174',
   'https://localhost:5173',
   'https://localhost:5174',
@@ -85,7 +93,8 @@ app.use(cors({
     }
     return callback(new Error(`CORS: Origem não permitida: ${origin}`));
   },
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200,
 }));
 
 // Body parser
@@ -132,6 +141,36 @@ app.get('/api/health', (req, res) => {
     message: 'Servidor funcionando',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Status detalhado de configuração (CORS, Banco)
+app.get('/api/status', async (req, res) => {
+  let supabaseConn = false;
+  try {
+    supabaseConn = isSupabaseConfigured && isSupabaseConnected && await testSupabaseConnection();
+  } catch (_) {
+    supabaseConn = false;
+  }
+
+  const postgresConfigured = !!isDatabaseConfigured;
+
+  res.json({
+    success: true,
+    environment: process.env.NODE_ENV || 'development',
+    cors: {
+      allowedOrigins,
+    },
+    database: {
+      supabase: {
+        configured: !!isSupabaseConfigured,
+        connected: !!supabaseConn,
+      },
+      postgres: {
+        configured: !!postgresConfigured,
+      },
+      active: supabaseConn ? 'supabase' : (postgresConfigured ? 'postgres' : 'none')
+    }
   });
 });
 
