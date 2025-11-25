@@ -73,6 +73,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao listar fornecedores:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
@@ -147,6 +153,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao criar fornecedor:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
@@ -208,6 +220,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao atualizar fornecedor:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
@@ -249,6 +267,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao inativar fornecedor:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
@@ -290,6 +314,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao reativar fornecedor:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
@@ -316,6 +346,12 @@ class FornecedorController {
       });
     } catch (error) {
       console.error('Erro ao buscar fornecedores:', error);
+      if (error?.code === 'DATABASE_NOT_CONFIGURED') {
+        return res.status(503).json({
+          success: false,
+          message: 'Banco de dados não configurado no servidor. Defina DATABASE_URL ou variáveis DB_*.'
+        });
+      }
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor'
