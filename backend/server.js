@@ -20,6 +20,7 @@ const contaPagarRoutes = require('./src/routes/contaPagarRoutes');
 const faturadoRoutes = require('./src/routes/faturadoRoutes');
 const ragRoutes = require('./src/routes/ragRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
+const adminRoutes = require('./src/routes/adminRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -123,6 +124,7 @@ app.use('/api/contas-pagar', contaPagarRoutes);
 app.use('/api/faturados', faturadoRoutes);
 app.use('/api/rag', ragRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Rota de health check
 app.get('/health', (req, res) => {

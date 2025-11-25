@@ -6,6 +6,7 @@ const dns = require('dns');
 // Configuração do cliente Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const forceSupabase = process.env.FORCE_SUPABASE === 'true';
 
 // Configurar DNS para usar servidores Google (8.8.8.8) e Cloudflare (1.1.1.1)
 dns.setServers(['8.8.8.8', '1.1.1.1']);
@@ -65,75 +66,49 @@ if (!supabaseUrl || !supabaseKey || !isValidUrl(supabaseUrl) || supabaseUrl.incl
     });
     console.log('✅ Cliente Supabase configurado com sucesso com tratamento de erros de rede');
     
-    // Função para testar conectividade com retry
+    // Função para testar conectividade com lógica simplificada e suporte a FORCE_SUPABASE
     async function testSupabaseConnection(retryCount = 0) {
       if (!supabaseClient) return false;
-      
+      if (forceSupabase) {
+        supabaseConnected = true;
+        return true;
+      }
+
       try {
-        // Verificar se conseguimos resolver o domínio do Supabase
-        const supabaseDomain = new URL(supabaseUrl).hostname;
-        
-        try {
-          // Tentar resolver o domínio usando DNS
-          await new Promise((resolve, reject) => {
-            dns.lookup(supabaseDomain, (err, address) => {
-              if (err) {
-                console.error(`⚠️ Erro de DNS ao resolver ${supabaseDomain}:`, err.message);
-                reject(err);
-              } else {
-                console.log(`✅ Domínio ${supabaseDomain} resolvido para ${address}`);
-                resolve(address);
-              }
-            });
-          });
-        } catch (dnsError) {
-          // Se falhar na resolução de DNS, usar modo local
-          console.error(`⚠️ Falha na resolução de DNS para ${supabaseDomain}. Usando modo local.`);
-          supabaseConnected = false;
-          return false;
-        }
-        
-        // Tentar fazer uma requisição simples
-        // Executa consulta simples com timeout manual (Promise.race)
-        const queryPromise = supabaseClient
+        const { error } = await supabaseClient
           .from('fornecedores')
-          .select('count')
+          .select('id')
           .limit(1);
 
-        const timeoutMs = 5000;
-        const result = await Promise.race([
-          queryPromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
-        ]);
-
-        const { data, error } = result || {};
-        
         if (error) {
-          // Se for erro de conectividade e ainda temos tentativas, tentar novamente
-          if ((error.message.includes('fetch failed') || 
-               error.message.includes('network') || 
-               error.message.includes('timeout')) && 
-              retryCount < 2) {
-            console.warn(`⚠️ Erro de conectividade com Supabase, tentativa ${retryCount + 1}/3:`, error.message);
-            // Esperar um pouco antes de tentar novamente
-            await new Promise(resolve => setTimeout(resolve, 1000));
+          const msg = (error.message || '').toLowerCase();
+          // Erros de rede: tentar novamente algumas vezes
+          if ((msg.includes('fetch failed') || msg.includes('network') || msg.includes('timeout')) && retryCount < 2) {
+            console.warn(`⚠️ Erro de rede Supabase, tentativa ${retryCount + 1}/3:`, error.message);
+            await new Promise(r => setTimeout(r, 1000));
             return testSupabaseConnection(retryCount + 1);
           }
-          
-          if (!error.message.includes('relation "fornecedores" does not exist')) {
-            console.warn('⚠️ Erro de conectividade com Supabase:', error.message);
-            supabaseConnected = false;
-            return false;
+          // Se a tabela ainda não existir, considerar conectado (alcance ao serviço funcionando)
+          if (msg.includes('relation') && msg.includes('does not exist')) {
+            supabaseConnected = true;
+            return true;
           }
+          // Outros erros (ex.: RLS com anon sem permissões) — serviço responde, considerar conectado
+          supabaseConnected = true;
+          return true;
         }
-        
-        console.log('✅ Conectividade com Supabase estabelecida com sucesso');
+
         supabaseConnected = true;
         return true;
       } catch (err) {
-        console.warn('⚠️ Falha na conectividade com Supabase:', err.message);
-        supabaseConnected = false;
-        return false;
+        const msg = (err.message || '').toLowerCase();
+        if (msg.includes('fetch failed') || msg.includes('network') || msg.includes('timeout')) {
+          supabaseConnected = false;
+          return false;
+        }
+        // Erros não relacionados a rede — considerar serviço alcançável
+        supabaseConnected = true;
+        return true;
       }
     }
     
@@ -147,7 +122,7 @@ if (!supabaseUrl || !supabaseKey || !isValidUrl(supabaseUrl) || supabaseUrl.incl
       supabase: supabaseClient,
       isSupabaseConfigured: true,
       get isSupabaseConnected() {
-        return supabaseConnected;
+        return forceSupabase ? true : supabaseConnected;
       },
       testSupabaseConnection
     };
