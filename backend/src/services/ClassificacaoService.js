@@ -289,6 +289,39 @@ class ClassificacaoService {
     const pontuacoes = {};
     const palavrasEncontradas = {};
 
+    // Casos especiais: Combustíveis e Periféricos de TI
+    const termosCombustivel = [
+      'óleo diesel', 'oleo diesel', 'diesel', 'diesel b s10', 's10', 'aditivado',
+      'combustível', 'combustivel', 'abastecimento', 'posto'
+    ];
+    const termosPerifericos = [
+      'mouse', 'teclado', 'monitor', 'periférico', 'periferico', 'webcam', 'headset'
+    ];
+
+    const encontradosCombustivel = termosCombustivel.filter(t => texto.includes(t));
+    if (encontradosCombustivel.length > 0) {
+      return {
+        categoria: 'MANUTENÇÃO E OPERAÇÃO',
+        subcategoria: 'Combustíveis e Lubrificantes',
+        confianca: 0.85,
+        motivo: `Termos de combustível detectados: ${encontradosCombustivel.join(', ')}`,
+        fonte: 'keywords_especial',
+        palavras_chave: encontradosCombustivel
+      };
+    }
+
+    const encontradosPerifericos = termosPerifericos.filter(t => texto.includes(t));
+    if (encontradosPerifericos.length > 0) {
+      return {
+        categoria: 'TECNOLOGIA',
+        subcategoria: 'Periféricos de TI',
+        confianca: 0.85,
+        motivo: `Termos de periféricos detectados: ${encontradosPerifericos.join(', ')}`,
+        fonte: 'keywords_especial',
+        palavras_chave: encontradosPerifericos
+      };
+    }
+
     // Calcula pontuação para cada categoria
     Object.keys(this.categorias).forEach(categoria => {
       const keywords = this.categorias[categoria].keywords;
@@ -377,6 +410,7 @@ class ClassificacaoService {
 
     return {
       categoria: melhorCategoria,
+      subcategoria: melhorCategoria === 'TECNOLOGIA' ? 'Itens/Serviços de TI' : undefined,
       confianca: confianca,
       motivo: palavrasEncontradas[melhorCategoria]?.length > 0 
         ? `Classificação por palavras-chave: ${palavrasEncontradas[melhorCategoria].join(', ')}` 
