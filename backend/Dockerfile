@@ -1,5 +1,5 @@
 # Backend Dockerfile
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
 # Instalar dependências do sistema necessárias para pdf-parse
 RUN apk add --no-cache \
