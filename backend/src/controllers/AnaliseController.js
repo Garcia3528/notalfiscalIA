@@ -212,7 +212,32 @@ class AnaliseController {
       });
     } catch (error) {
       console.error('Erro ao registrar movimento:', error);
-      return res.status(500).json({ success: false, message: error.message });
+
+      // Tratamento específico para banco não configurado ou schema ausente
+      const msg = (error && (error.message || error.toString())) || 'Erro interno';
+      const lower = msg.toLowerCase();
+
+      // Erros típicos quando tabela/relacionamento não existe no Supabase
+      const schemaMissing = (
+        lower.includes('relation') && lower.includes('does not exist')
+      ) || lower.includes('table') && lower.includes('does not exist')
+        || lower.includes('pgrst') && lower.includes('not found');
+
+      if (error.code === 'DATABASE_NOT_CONFIGURED' || schemaMissing) {
+        return res.status(503).json({
+          success: false,
+          code: 'DATABASE_NOT_CONFIGURED',
+          message: 'Banco de dados Supabase sem schema necessário. Execute o script supabase-full.sql.',
+          hint: 'Abra o Supabase SQL Editor e rode backend/scripts/supabase-full.sql',
+        });
+      }
+
+      // Demais erros — retornar 500 com detalhes mínimos
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno ao registrar movimento',
+        error: process.env.NODE_ENV === 'development' ? msg : undefined,
+      });
     }
   }
 }
