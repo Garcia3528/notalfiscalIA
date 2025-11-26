@@ -37,7 +37,7 @@ class ClassificacaoService {
       'TECNOLOGIA': {
         nome: 'Tecnologia',
         descricao: 'Software, hardware, serviços de TI',
-        keywords: ['software', 'licenca', 'microsoft', 'google', 'amazon', 'servidor', 'hosting']
+        keywords: ['software', 'licenca', 'microsoft', 'google', 'amazon', 'servidor', 'hosting', 'hardware', 'periferico', 'componentes', 'ssd', 'memoria', 'placa de video', 'monitor', 'teclado', 'mouse', 'kabum', 'pichau', 'terabyteshop', 'informatica']
       },
       'MARKETING': {
         nome: 'Marketing e Publicidade',
@@ -324,7 +324,7 @@ class ClassificacaoService {
         { regex: /restaurante|lanchonete|refeição|almoço|café|lanche/i, categoria: 'ALIMENTACAO' },
         { regex: /combustível|gasolina|diesel|uber|táxi|transporte|viagem/i, categoria: 'TRANSPORTE' },
         { regex: /papel|caneta|escritório|impressora|toner|cartucho/i, categoria: 'ESCRITORIO' },
-        { regex: /software|licença|sistema|computador|notebook|servidor/i, categoria: 'TECNOLOGIA' },
+        { regex: /software|licença|sistema|computador|notebook|servidor|hardware|periférico|monitor|teclado|mouse/i, categoria: 'TECNOLOGIA' },
         { regex: /marketing|publicidade|anúncio|campanha|divulgação/i, categoria: 'MARKETING' },
         { regex: /consultoria|assessoria|advocacia|contabilidade|jurídico/i, categoria: 'SERVICOS_PROFISSIONAIS' },
         { regex: /manutenção|reparo|conserto|assistência|técnica/i, categoria: 'MANUTENCAO' },
@@ -348,7 +348,7 @@ class ClassificacaoService {
         'ALIMENTACAO': ['comida', 'alimento', 'refeição', 'almoço', 'jantar', 'café', 'lanche'],
         'TRANSPORTE': ['viagem', 'deslocamento', 'km', 'quilometragem', 'estrada', 'pedágio'],
         'ESCRITORIO': ['material', 'suprimento', 'impressão', 'cópia', 'documento'],
-        'TECNOLOGIA': ['sistema', 'programa', 'aplicativo', 'digital', 'online', 'internet'],
+        'TECNOLOGIA': ['sistema', 'programa', 'aplicativo', 'digital', 'online', 'internet', 'hardware', 'periférico', 'monitor', 'teclado', 'mouse'],
         'MARKETING': ['propaganda', 'divulgação', 'campanha', 'mídia', 'anúncio', 'promoção'],
         'SERVICOS_PROFISSIONAIS': ['serviço', 'profissional', 'especializado', 'técnico', 'assessoria'],
         'MANUTENCAO': ['manutenção', 'conservação', 'limpeza', 'higienização', 'reforma', 'reparo'],
@@ -913,6 +913,14 @@ RESPOSTA (JSON):
         categoria: 'ADMINISTRATIVAS',
         subcategoria: 'Serviços Bancários',
         confianca: 0.75
+      }
+      ,
+      // E-commerce e varejo de tecnologia / informática
+      {
+        padroes: ['kabum', 'magalu', 'magazine luiza', 'submarino', 'casas bahia', 'americanas', 'pichau', 'terabyteshop', 'informática', 'informatica', 'eletrônico', 'eletronico'],
+        categoria: 'TECNOLOGIA',
+        subcategoria: 'Equipamentos e Periféricos de TI',
+        confianca: 0.85
       }
     ];
 
