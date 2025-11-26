@@ -72,14 +72,16 @@ class ClassificacaoService {
    */
   async classificarDespesa(dados) {
     console.log('🔍 Classificando despesa...');
-    const preferirIA = process.env.PREFER_AI === 'true';
+    // Prioriza IA por padrão quando o modelo estiver disponível, a menos que PREFER_AI seja explicitamente 'false'
+    const preferirIA = (this.model && process.env.PREFER_AI !== 'false') || process.env.PREFER_AI === 'true';
 
     // Quando preferir IA, tenta primeiro com IA e retorna se for suficientemente confiável
     if (preferirIA) {
       try {
         console.log('🤖 Preferência configurada para IA (PREFER_AI=true). Tentando IA primeiro...');
         const tentativaIAInicial = await this.classificarComIA(dados);
-        if (tentativaIAInicial && tentativaIAInicial.categoria && tentativaIAInicial.confianca >= 0.6) {
+        // Reduz levemente o limiar para aceitar a IA como primeira opção
+        if (tentativaIAInicial && tentativaIAInicial.categoria && tentativaIAInicial.confianca >= 0.5) {
           console.log('✅ IA retornou classificação com boa confiança. Usando resultado da IA.');
           return tentativaIAInicial;
         }
