@@ -100,7 +100,7 @@ class ContaPagar extends BaseModel {
   }
 
   static async findWithParcelas(id) {
-    if (false && isSupabaseConfigured && isSupabaseConnected && await testSupabaseConnection()) {
+    if (isSupabaseConfigured && isSupabaseConnected && await testSupabaseConnection()) {
       try {
       // Buscar conta diretamente no Supabase
       const { data: conta, error: contaErr } = await supabase
@@ -127,7 +127,7 @@ class ContaPagar extends BaseModel {
       return {
         ...conta,
         parcelas,
-        tipos_despesa: tiposLink.map(t => t.tipo_despesa_id)
+        tipos_despesa: (tiposLink || []).map(t => t.tipo_despesa_id)
       };
       } catch (error) {
         console.log('Erro no Supabase, usando fallback PostgreSQL:', error.message);
@@ -171,6 +171,7 @@ class ContaPagar extends BaseModel {
 
   static async create(contaData, parcelasData = [], tiposDespesaIds = []) {
     if (isSupabaseConfigured && isSupabaseConnected && await testSupabaseConnection()) {
+      let contaId = null;
       try {
       const contaPayload = {
         fornecedor_id: contaData.fornecedor_id || null,
@@ -190,7 +191,7 @@ class ContaPagar extends BaseModel {
         .select('*')
         .single();
       if (contaErr) throw contaErr;
-      const contaId = contaRes.id;
+      contaId = contaRes.id;
 
       if (parcelasData.length > 0) {
         const parcelasPayload = parcelasData.map(p => ({
@@ -221,7 +222,15 @@ class ContaPagar extends BaseModel {
       return await this.findWithParcelas(contaId);
       } catch (error) {
         console.log('Erro no Supabase, usando fallback PostgreSQL:', error.message);
-        // Fallback para PostgreSQL se Supabase falhar
+        // Se já criamos a conta no Supabase, tentar retornar dados de lá em vez de cair para o local
+        if (contaId) {
+          try {
+            return await this.findWithParcelas(contaId);
+          } catch (e) {
+            // Prosseguir para fallback apenas se não for possível retornar pelo Supabase
+          }
+        }
+        // Fallback para PostgreSQL se Supabase falhar completamente
       }
     }
 
